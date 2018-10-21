@@ -18,21 +18,10 @@ RUN echo 'blacklist dvb_usb_rtl28xxu' > /etc/modprobe.d/raspi-blacklist.conf && 
     ldconfig && \
     rm -rf /tmp/rtl-sdr
 
-# DUMP1090
-WORKDIR /tmp
-RUN git clone https://github.com/mutability/dump1090 && \
-    cd dump1090 && \
-    make && mkdir /usr/lib/fr24 && cp dump1090 /usr/lib/fr24/ && cp -r public_html /usr/lib/fr24/
-COPY config.js /usr/lib/fr24/public_html/
-RUN mkdir /usr/lib/fr24/public_html/data
-
-# Uncomment if you want to add your upintheair.json file
-#COPY upintheair.json /usr/lib/fr24/public_html/
-
 # PIAWARE
 WORKDIR /tmp
 RUN apt-get update && \
-    apt-get install sudo build-essential debhelper tcl8.6-dev autoconf python3-dev python-virtualenv libz-dev net-tools tclx8.4 tcllib tcl-tls itcl3 python3-venv dh-systemd init-system-helpers -y 
+    apt-get install sudo build-essential debhelper tcl8.6-dev autoconf python3-dev python-virtualenv libz-dev net-tools tclx8.4 tcllib tcl-tls itcl3 python3-venv dh-systemd init-system-helpers devscripts -y 
 RUN git clone https://github.com/flightaware/piaware_builder.git piaware_builder
 WORKDIR /tmp/piaware_builder
 RUN ./sensible-build.sh jessie && cd package-jessie && dpkg-buildpackage -b && cd .. && dpkg -i piaware_*_*.deb
@@ -40,18 +29,34 @@ COPY piaware.conf /etc/
 
 # FR24FEED
 WORKDIR /fr24feed
-RUN wget $(wget -qO- http://feed.flightradar24.com/linux | egrep amd64.tgz | awk -F\" '{print $2}') \
-    && tar -xvzf *amd64.tgz
+RUN apt-key adv --recv-key --keyserver pool.sks-keyservers.net 40C430F5 || apt-key adv --recv-key --keyserver pgp.mit.edu 40C430F5
+RUN echo 'deb http://repo.feed.flightradar24.com flightradar24 raspberrypi-stable' >> /etc/apt/sources.list
+RUN apt-get update -y && apt-get install -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" -y fr24feed
 COPY fr24feed.ini /etc/
+RUN rm -rf /usr/lib/fr24/public_html # conflict between dump1090 and fr24
+
+# DUMP1090
+WORKDIR /tmp
+RUN git clone https://github.com/mutability/dump1090 && \
+    cd dump1090 && \
+    make && mkdir -p /usr/lib/fr24 && cp dump1090 /usr/lib/fr24/ && cp -r public_html /usr/lib/fr24/
+COPY config.js /usr/lib/fr24/public_html/
+RUN mkdir /usr/lib/fr24/public_html/data
+
+# Uncomment if you want to add your upintheair.json file
+#COPY upintheair.json /usr/lib/fr24/public_html/
+
+
 
 RUN apt-get update && apt-get install -y supervisor
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # Add Tini
 ENV TINI_VERSION v0.16.1
-ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /tini
+#ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /tini
+ADD https://github.com/krallin/tini/releases/download/v0.18.0/tini-armhf /tini
 RUN chmod +x /tini
-ENTRYPOINT ["/tini", "--"]
+#ENTRYPOINT ["/tini", "--"]
 
 EXPOSE 8754 8080 30001 30002 30003 30004 30005 30104 
 
